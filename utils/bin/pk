@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+
+# --- 1. Usage / Help ---
+usage() {
+    cat <<EOF
+Usage: ${0##*/} [FILTER]
+Interactively select and terminate processes using fzf.
+
+Arguments:
+  FILTER     Optional initial query to filter the process list.
+
+Options:
+  -h, --help Show this help message.
+
+Examples:
+  ${0##*/}           # Open full process list
+  ${0##*/} chrome    # Open list pre-filtered for 'chrome'
+EOF
+}
+
+# Handle help flags
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+# --- 2. Main Logic ---
+
+# ps -eo: user, pid, ppid, start_time, command
+# sed 1d: removes the header
+# fzf:
+#   --query: passes the first script argument as the initial search
+#   --preview: uses 'ps' to show detailed info for the PID in column 2 ({2})
+# pids=$(ps -eo user,pid,ppid,start,command | sed 1d | fzf \
+pids=$(ps -fu $USER | sed 1d | fzf \
+    --multi \
+    --query="$1" \
+    --header="[Kill] TAB: Select | CTRL-A: Select All | ENTER: Kill -9" \
+    --layout=reverse \
+    --inline-info \
+    --preview 'ps -p {2} -o user,pid,ppid,start,stat,pcpu,pmem,command --width 100' \
+    --preview-window 'down,4,border-top' \
+    | awk '{print $2}')
+
+# --- 3. Action ---
+
+if [[ -n "$pids" ]]; then
+    # Convert newline-separated PIDs to a space-separated string for display
+    formatted_pids=$(echo "$pids" | tr '\n' ' ')
+
+    # Kill the processes
+    # xargs -r ensures kill isn't called if pids is somehow empty
+    echo "$pids" | xargs -r kill -9
+
+    echo "✅ Terminated PIDs: $formatted_pids"
+else
+    echo "x No processes selected."
+fi

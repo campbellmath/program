@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+# Function to display usage instructions
+usage() {
+    cat <<EOF
+Usage: ${0##*/} <DIRECTORY> <PATTERN>
+Search for text patterns within files in a specific directory and open results in Vim.
+
+Arguments:
+  DIRECTORY  The directory to start the search in (Required).
+  PATTERN    The text string or regex to search for inside files (Required).
+
+Options:
+  -h, --help Show this help message.
+
+Examples:
+  ${0##*/} ./src "function_name"       # Find a specific function in the src folder
+  ${0##*/} . "ERROR|WARN"              # Search for ERROR or WARN in the current directory
+  ${0##*/} /etc "^root"                # Find lines starting with 'root' in /etc
+EOF
+}
+
+# Handle help flags
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+# Ensure both arguments are provided
+if [ "$#" -lt 2 ]; then
+    usage
+    exit 1
+fi
+
+SEARCH_DIR="$1"
+SEARCH_PATTERN="$2"
+
+# Validate directory
+if [ ! -d "$SEARCH_DIR" ]; then
+    echo "Error: '$SEARCH_DIR' is not a directory."
+    exit 1
+fi
+
+# 1. ag: Search for the pattern
+#    -t: Only search text files
+#    --nobreak/--noheading: Single line format (file:line:col:text)
+#    --column: Provides character position for Vim
+selections=$(ag -t --nobreak --noheading --column "$SEARCH_PATTERN" "$SEARCH_DIR" | fzf \
+    --multi \
+    --ansi \
+    --delimiter : \
+    --header "TAB: Select | CTRL-A: Select All | ENTER: Open in Quickfix" \
+    --preview 'bat --color=always --highlight-line {2} --style=numbers {1}' \
+    --preview-window 'up,80%,border-left,+{2}+3/3' \
+    --bind "ctrl-down:change-preview-window(up,80%)" \
+    --bind "ctrl-up:change-preview-window(down,80%)" \
+    --bind "ctrl-right:change-preview-window(left,80%)" \
+    --bind "ctrl-left:change-preview-window(right,80%)")
+
+# Exit if no selection was made (e.g., user pressed Esc)
+[ -z "$selections" ] && exit 0
+
+# 2. Open in Vim Quickfix
+# -q: Reads the list from stdin
+# -c: Commands to open the quickfix window and jump to the first result
+vim -q <(echo "$selections") -c "copen | cc 1"

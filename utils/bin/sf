@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+
+# --- 1. Usage / Help ---
+usage() {
+    cat <<EOF
+Usage: ${0##*/} <DIRECTORY> [PATTERN]
+Search for files by name within a specific path and open them in Vim.
+
+Arguments:
+  DIRECTORY  The directory to search in (Required).
+  PATTERN    Optional glob pattern for filenames (Defaults to '*').
+
+Options:
+  -h, --help Show this help message.
+
+Examples:
+  ${0##*/} . "*.sh"             # Find all shell scripts in current dir
+  ${0##*/} ./src "auth*"        # Find files starting with 'auth' in src
+  ${0##*/} ~/Documents          # Browse all files in Documents
+EOF
+}
+
+# --- 2. Preview Logic (Internal Engine) ---
+# This part is called by fzf to render the preview window
+preview_logic() {
+    local target="$1"
+
+    if [[ -d "$target" ]]; then
+        echo "--- DIRECTORY CONTENTS ---"
+        if command -v tree >/dev/null 2>&1; then
+            tree -C "$target" | head -n 100
+        else
+            ls -F --color=always "$target"
+        fi
+    else
+        local info=$(file -b "$target")
+        # Check if file is text-based for 'bat' or binary
+        if [[ "${info,,}" == *"text"* || "${info,,}" == *"source"* || "${info,,}" == *"empty"* ]]; then
+            bat --color=always --style=numbers --line-range :500 "$target" 2>/dev/null || cat "$target" | head -n 500
+        else
+            echo "--- BINARY FILE ---"
+            echo "Type: $info"
+        fi
+    fi
+}
+
+# Handle internal preview call
+if [[ "$1" == "--preview" ]]; then
+    preview_logic "$2"
+    exit
+fi
+
+# --- 3. Argument Validation ---
+
+# Show usage if help requested or no directory provided
+if [[ "$1" == "-h" || "$1" == "--help" || -z "$1" ]]; then
+    usage
+    exit 0
+fi
+
+SEARCH_DIR="$1"
+PATTERN="${2:-*}"
+
+# Check if the directory exists
+if [[ ! -d "$SEARCH_DIR" ]]; then
+    echo "Error: '$SEARCH_DIR' is not a valid directory."
+    echo ""
+    usage
+    exit 1
+fi
+
+# --- 4. Main Search Logic ---
+# -type f: only files
+# -iname: case-insensitive name matching
+# -not -path '*/.*': hide hidden files/folders (keeps it clean)
+files=$(find "$SEARCH_DIR" -type f -iname "$PATTERN" -not -path '*/.*' 2>/dev/null | fzf \
+    --multi \
+    --ansi \
+    --header "[Vim] TAB: Select | ENTER: Edit | CTRL-Arrows: Move Preview" \
+    --preview "$0 --preview {}" \
+    --preview-window 'up,80%,border-left' \
+    --bind "ctrl-down:change-preview-window(up,80%)" \
+    --bind "ctrl-up:change-preview-window(down,80%)" \
+    --bind "ctrl-right:change-preview-window(left,80%)" \
+    --bind "ctrl-left:change-preview-window(right,80%)")
+
+# --- 5. Open in Vim ---
+if [[ -n "$files" ]]; then
+    # Convert newline-separated string to an array safely
+    mapfile -t file_array <<< "$files"
+    vim "${file_array[@]}"
+fi
