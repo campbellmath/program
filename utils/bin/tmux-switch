@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Get the session list
+sessions=$(tmux list-sessions -F "#{session_name}" 2>/dev/null)
+
+# If no sessions are running at all, just create a new one and exit
+if [[ -z "$sessions" ]]; then
+    tmux new-session
+    exit 0
+fi
+
+# Use fzf to select a session, but add an option to create a [New Session]
+choice=$(echo -e "NEW SESSION\n$sessions" | fzf --height 40% --reverse --header="Select or Create Session")
+
+if [[ "$choice" == "NEW SESSION" ]]; then
+    tmux new-session
+elif [[ -n "$choice" ]]; then
+    # Standard switch logic
+    if [[ -z "$TMUX" ]]; then
+        tmux attach-session -t "$choice"
+    else
+        tmux switch-client -t "$choice"
+    fi
+fi
