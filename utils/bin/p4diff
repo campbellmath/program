@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Function to display help/usage
+usage() {
+    echo "Usage: $0 [options] [file_path...]"
+    echo ""
+    echo "Options:"
+    echo "  -c <cl_number>  Diff files in a specific pending changelist"
+    echo "  -s              Diff all opened files in default and numbered CLs"
+    echo "  -h, --help      Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                      # Diff all opened files"
+    echo "  $0 path/to/file.cpp     # Diff a specific file"
+    echo "  $0 -c 123456            # Diff everything in CL 123456"
+    exit 1
+}
+
+# Check if delta is installed
+if ! command -v delta &> /dev/null; then
+    echo "Error: 'delta' is not installed. (https://github.com/dandavison/delta)"
+    exit 1
+fi
+
+# Handle arguments
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    usage
+fi
+
+if [[ "$1" == "-c" ]]; then
+    if [[ -z "$2" ]]; then
+        echo "Error: Missing changelist number."
+        usage
+    fi
+    # Diff a specific changelist
+    p4 diff -du -c "$2" | delta
+elif [[ "$1" == "-s" || -z "$1" ]]; then
+    # Diff all opened files (default behavior)
+    p4 diff -du | delta
+else
+    # Diff specific files passed as arguments
+    p4 diff -du "$@" | delta
+fi

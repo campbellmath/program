@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Function to display usage
+usage() {
+    echo "Usage: $0 [username] [max_changes]"
+    echo "Default: user=$USER, max=20"
+    echo ""
+    echo "Example: $0 wenchi 50"
+    exit 1
+}
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    usage
+fi
+
+# Check if p4 is installed
+if ! command -v p4 &> /dev/null; then
+    echo "Error: Perforce (p4) command not found."
+    exit 1
+fi
+
+# Set variables with defaults
+USER_NAME=${1:-$USER}
+LIMIT=${2:-20}
+
+echo "Fetching last $LIMIT submitted changes for $USER_NAME..."
+
+# Execute the pipeline
+# We use --preview-window=right:60% to give the description more room
+p4 changes -u "$USER_NAME" -s submitted -m "$LIMIT" | \
+fzf --header "Changelist Preview (User: $USER_NAME)" \
+    --preview "p4 describe -s {2}" \
+    --preview-window 'up,80%,border-left' \
+    --bind "ctrl-down:change-preview-window(up,80%)" \
+    --bind "ctrl-up:change-preview-window(down,80%)" \
+    --bind "ctrl-right:change-preview-window(left,80%)" \
+    --bind "ctrl-left:change-preview-window(right,80%)" \
+    --bind "enter:execute(p4 describe {2} | bat)" \
+    --info=inline

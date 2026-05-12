@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+
+# --- 1. Usage / Help ---
+usage() {
+    cat <<EOF
+Usage: ${0##*/}
+Browse files currently opened with 'p4 edit' and open them in Vim.
+
+Options:
+  -h, --help Show this help message.
+
+Description:
+  - Lists files opened in Perforce (p4 opened)
+  - Uses fzf for multi-select
+  - Uses bat for preview
+  - Opens selected files in Vim buffers (not tabs)
+
+EOF
+}
+
+# --- 2. Preview Logic (Internal Engine) ---
+preview_logic() {
+    local target="$1"
+
+    if [[ -d "$target" ]]; then
+        echo "--- DIRECTORY CONTENTS ---"
+        if command -v tree >/dev/null 2>&1; then
+            tree -C "$target" | head -n 100
+        else
+            ls -F --color=always "$target"
+        fi
+    else
+        local info
+        info=$(file -b "$target")
+        if [[ "${info,,}" == *"text"* || "${info,,}" == *"source"* || "${info,,}" == *"empty"* ]]; then
+            bat --color=always --style=numbers --line-range :500 "$target" 2>/dev/null \
+                || head -n 500 "$target"
+        else
+            echo "--- BINARY FILE ---"
+            echo "Type: $info"
+        fi
+    fi
+}
+
+# Handle internal preview call
+if [[ "$1" == "--preview" ]]; then
+    preview_logic "$2"
+    exit
+fi
+
+# --- 3. Argument Validation ---
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+# --- 4. Main Search Logic (p4 opened) ---
+# Extract local file paths from: //depot/...#rev - edit default change (text)
+# Output format example:
+#   //depot/foo/bar.cpp#3 - edit default change (text)
+# We strip everything after '#...' and map to local path via `p4 where`
+
+files=$(
+    p4 opened 2>/dev/null | awk '{print $1}' | sed 's/#.*//' | \
+    while read -r depot; do
+        p4 where "$depot" 2>/dev/null | awk '{print $3}'
+    done | \
+    fzf \
+        --multi \
+        --ansi \
+        --header "[P4 + Vim] TAB: Select | ENTER: Edit | CTRL-Arrows: Move Preview" \
+        --preview "$0 --preview {}" \
+        --preview-window 'up,80%,border-left' \
+        --bind "ctrl-down:change-preview-window(up,80%)" \
+        --bind "ctrl-up:change-preview-window(down,80%)" \
+        --bind "ctrl-right:change-preview-window(left,80%)" \
+        --bind "ctrl-left:change-preview-window(right,80%)"
+)
+
+# --- 5. Open in Vim ---
+if [[ -n "$files" ]]; then
+    mapfile -t file_array <<< "$files"
+
+    # Open in buffers (default). Explicitly avoid tabs.
+    vim "${file_array[@]}"
+fi
