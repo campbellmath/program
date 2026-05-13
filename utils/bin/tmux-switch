@@ -1,21 +1,72 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# Get the session list
-sessions=$(tmux list-sessions -F "#{session_name}" 2>/dev/null)
+# --- Functions ---
 
-# If no sessions are running at all, just create a new one and exit
-if [[ -z "$sessions" ]]; then
-    tmux new-session
+usage() {
+    cat <<EOF
+Usage: ${0##*/} [OPTIONS] [SESSION_NAME]
+
+Options:
+  -h, --help    Show this help message and exit
+
+Description:
+  - If SESSION_NAME is provided, switches to it (creates it if missing).
+  - If no name is provided, opens an fzf selector.
+  - Selecting "NEW SESSION" prompts for a name.
+  - Works seamlessly inside and outside of tmux.
+EOF
+}
+
+# --- Initialization & Checks ---
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    usage
     exit 0
 fi
 
-# Use fzf to select a session, but add an option to create a [New Session]
-choice=$(echo -e "NEW SESSION\n$sessions" | fzf --height 40% --reverse --header="Select or Create Session")
+if ! command -v tmux &> /dev/null || ! command -v fzf &> /dev/null; then
+    echo "Error: tmux and fzf must be installed."
+    exit 1
+fi
 
+# --- Logic ---
+
+# 1. Direct Argument Handling
+if [[ -n "$1" ]]; then
+    if ! tmux has-session -t "$1" 2>/dev/null; then
+        tmux new-session -d -s "$1"
+    fi
+    [[ -z "$TMUX" ]] && tmux attach-session -t "$1" || tmux switch-client -t "$1"
+    exit 0
+fi
+
+# 2. Get the session list
+sessions=$(tmux list-sessions -F "#{session_name}" 2>/dev/null)
+
+# 3. Selection Logic
+if [[ -z "$sessions" ]]; then
+    choice="NEW SESSION"
+else
+    choice=$(printf "NEW SESSION\n%s" "$sessions" | fzf --height 40% --reverse --header="Select or Create Session")
+fi
+
+# Exit if fzf was cancelled
+[[ -z "$choice" ]] && exit 0
+
+# 4. Action Execution
 if [[ "$choice" == "NEW SESSION" ]]; then
-    tmux new-session
-elif [[ -n "$choice" ]]; then
-    # Standard switch logic
+    read -p "Enter new session name: " new_name
+    # Default name if empty
+    [[ -z "$new_name" ]] && new_name="session_$(date +%H%M%S)"
+
+    if [[ -z "$TMUX" ]]; then
+        tmux new-session -s "$new_name"
+    else
+        tmux new-session -d -s "$new_name"
+        tmux switch-client -t "$new_name"
+    fi
+else
+    # Standard switch/attach
     if [[ -z "$TMUX" ]]; then
         tmux attach-session -t "$choice"
     else
