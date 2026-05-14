@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+cd "$1" || exit
+
+# Check if it's a git repo
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    exit 0
+fi
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+STATUS=$(git diff --shortstat 2> /dev/null)
+
+if [ -z "$STATUS" ]; then
+    # CLEAN: ⚡main #[fg=green]✔
+    echo "⚡$BRANCH #[fg=green]✔"
+else
+    # DIRTY: ⚡main #[fg=red]✘ #[fg=green]+23 #[fg=red]-4
+    INSERTIONS=$(echo "$STATUS" | sed -E 's/.* ([0-9]+) insertion.*/+\1/' | grep -E "\+[0-9]+" || echo "+0")
+    DELETIONS=$(echo "$STATUS" | sed -E 's/.* ([0-9]+) deletion.*/-\1/' | grep -E "\-[0-9]+" || echo "-0")
+
+    echo "⚡$BRANCH #[fg=red]✘ #[fg=green]$INSERTIONS #[fg=red]$DELETIONS"
+fi
