@@ -75,7 +75,7 @@ static unsigned int cursorthickness = 2;
 static int bellvolume = 0;
 
 /* default TERM value */
-char *termname = "rxvt";
+char *termname = "st-256color";
 
 /*
  * spaces per tab
@@ -95,6 +95,40 @@ char *termname = "rxvt";
 unsigned int tabspaces = 4;
 
 /* Terminal colors (16 first used in escape sequence) */
+#define DEFAULT_COLORS 0
+#define TOKYO_NIGHT_COLORS 1
+
+#define COLOR_SCHEME_NAME DEFAULT_COLORS
+
+#if(COLOR_SCHEME_NAME == TOKYO_NIGHT_COLORS)
+static const char *colorname[] = {
+    /* 8 normal colors */
+    // "#1a1b26",
+    "#000000",
+    "#F7768E",
+    "#9ECE6A",
+    "#E0AF68",
+    "#7AA2F7",
+    "#9a7ecc",
+    "#4abaaf",
+    "#acb0d0",
+    /* 8 bright colors */
+    "#4e5173",
+    "#F7768E",
+    "#9ECE6A",
+    "#E0AF68",
+    "#7AA2F7",
+    "#9a7ecc",
+    "#4abaaf",
+    "#acb0d0",
+
+    [255] = 0,
+
+    /* more colors can be added after 255 to use with DefaultXX */
+    "green",
+    "#555555",
+};
+#else // default colors
 static const char *colorname[] = {
     /* 8 normal colors */
     "#000000", //	"black",
@@ -122,6 +156,7 @@ static const char *colorname[] = {
     "green",
     "#555555",
 };
+#endif
 
 
 /*
