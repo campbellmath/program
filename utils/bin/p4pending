@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+# Function to display usage
+usage() {
+    echo "Usage: $0 [username] [max_changes]"
+    echo "Default: user=$USER, max=20"
+    echo ""
+    echo "Example: $0 wenchi 50"
+    exit 1
+}
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    usage
+fi
+
+# Check if p4 is installed
+if ! command -v p4 &> /dev/null; then
+    echo "Error: Perforce (p4) command not found."
+    exit 1
+fi
+
+# Set variables with defaults
+USER_NAME=${1:-$USER}
+LIMIT=${2:-20}
+
+echo "Fetching last $LIMIT pending changes for $USER_NAME..."
+
+SELECTED=$(p4 changes -u "$USER_NAME" -s pending -m "$LIMIT" | \
+fzf --header "Pending Changelists (User: $USER_NAME) | enter: select+dump" \
+    --preview "p4 describe -s {2}; echo; echo '=== Shelved Files ==='; p4 describe -Ss {2} | grep '^\\.\\.\\.'" \
+    --preview-window 'up,80%,border-left' \
+    --bind "ctrl-down:change-preview-window(up,80%)" \
+    --bind "ctrl-up:change-preview-window(down,80%)" \
+    --bind "ctrl-right:change-preview-window(left,80%)" \
+    --bind "ctrl-left:change-preview-window(right,80%)" \
+    --info=inline)
+
+if [[ -n "$SELECTED" ]]; then
+    CL=$(echo "$SELECTED" | awk '{print $2}')
+    # Show opened files diff
+    # opened=$(p4 opened -c "$CL" 2>/dev/null | awk -F'#' '{print $1}')
+    # if [[ -n "$opened" ]]; then
+    #     echo "$opened" | xargs p4 diff -du | delta
+    # fi
+    # Show shelved diff if any
+    # p4 describe -S -du "$CL" | delta
+    # p4 describe -Ss
+    p4 describe -s ${CL};echo; echo '=== Shelved Files ==='; p4 describe -Ss ${CL} | grep '^\.\.\.'
+    echo "=============================================="
+    echo -e "Selected changelist: \033[31m$CL\033[0m"
+    echo -e "To view the diff of this changelist, run:"
+    echo -e "  \033[32m\$ p4diff -c \033[31m$CL\033[0m         \033[90m# diff opened files\033[0m"
+    echo -e "  \033[32m\$ p4diff -S \033[31m$CL\033[0m         \033[90m# diff shelved files\033[0m"
+    echo -e "  \033[32m\$ p4diff -c \033[31m$CL\033[0m\033[32m -S\033[0m      \033[90m# diff both opened and shelved\033[0m"
+    echo "=============================================="
+fi

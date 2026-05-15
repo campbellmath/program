@@ -1,18 +1,27 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Function to display help/usage
 usage() {
     echo "Usage: $0 [options] [file_path...]"
     echo ""
     echo "Options:"
-    echo "  -c <cl_number>  Diff files in a specific pending changelist"
-    echo "  -s              Diff all opened files in default and numbered CLs"
-    echo "  -h, --help      Show this help message"
+    echo "  -c <cl_number>       Diff opened files in a specific changelist"
+    echo "  -S <cl_number>       Diff shelved files in a specific changelist"
+    echo "  -c <cl_number> -S    Diff workspace (opened) vs shelved files directly"
+    echo "  -h, --help           Show this help message"
+    echo ""
+    echo "What gets diffed:"
+    echo "  -c (pending)  : workspace (local edits) vs depot head (server original)"
+    echo "  -c (submitted): submitted revision vs previous revision"
+    echo "  -S            : shelved file (server snapshot) vs depot head (server original)"
+    echo "  -c -S         : workspace (local edits) vs shelved file (server snapshot)"
     echo ""
     echo "Examples:"
     echo "  $0                      # Diff all opened files"
     echo "  $0 path/to/file.cpp     # Diff a specific file"
-    echo "  $0 -c 123456            # Diff everything in CL 123456"
+    echo "  $0 -c 123456            # Diff opened files in CL 123456"
+    echo "  $0 -S 123456            # Diff shelved files in CL 123456"
+    echo "  $0 -c 123456 -S         # Diff workspace vs shelved in CL 123456"
     exit 1
 }
 
@@ -22,22 +31,57 @@ if ! command -v delta &> /dev/null; then
     exit 1
 fi
 
-# Handle arguments
-if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    usage
-fi
+# Parse arguments
+CL=""
+SHOW_OPENED=false
+SHOW_SHELVED=false
+FILES=()
 
-if [[ "$1" == "-c" ]]; then
-    if [[ -z "$2" ]]; then
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help) usage ;;
+        -c) CL="$2"; SHOW_OPENED=true; shift 2 ;;
+        -S)
+            SHOW_SHELVED=true
+            # -S can take an optional CL arg if not already set by -c
+            if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
+                CL="$2"; shift 2
+            else
+                shift
+            fi
+            ;;
+        *) FILES+=("$1"); shift ;;
+    esac
+done
+
+# Execute
+if [[ "$SHOW_OPENED" == true || "$SHOW_SHELVED" == true ]]; then
+    if [[ -z "$CL" ]]; then
         echo "Error: Missing changelist number."
         usage
     fi
-    # Diff a specific changelist
-    p4 diff -du -c "$2" | delta
-elif [[ "$1" == "-s" || -z "$1" ]]; then
-    # Diff all opened files (default behavior)
-    p4 diff -du | delta
+    if [[ "$SHOW_OPENED" == true && "$SHOW_SHELVED" == true ]]; then
+        # Diff workspace files directly against shelved files
+        p4 opened -c "$CL" | awk -F'#' '{print $1}' | while IFS= read -r depot_file; do
+            local_file=$(p4 where "$depot_file" | awk '{print $3}')
+            diff -u \
+                --label "${depot_file} (shelved @${CL})" \
+                <(p4 print -q "${depot_file}@=${CL}" 2>/dev/null) \
+                --label "${local_file} (workspace)" \
+                "$local_file" 2>/dev/null
+        done | delta
+    elif [[ "$SHOW_OPENED" == true ]]; then
+        status=$(p4 change -o "$CL" | awk '/^Status:/{print $2}')
+        if [[ "$status" == "submitted" ]]; then
+            p4 describe -du "$CL" | delta
+        else
+            { p4 describe -s "$CL"; p4 opened -c "$CL" | awk -F'#' '{print $1}' | xargs p4 diff -du; } | delta
+        fi
+    elif [[ "$SHOW_SHELVED" == true ]]; then
+        p4 describe -S -du "$CL" | delta
+    fi
+elif [[ ${#FILES[@]} -gt 0 ]]; then
+    p4 diff -du "${FILES[@]}" | delta
 else
-    # Diff specific files passed as arguments
-    p4 diff -du "$@" | delta
+    p4 diff -du | delta
 fi

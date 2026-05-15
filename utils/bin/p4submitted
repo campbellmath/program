@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Function to display usage
 usage() {
@@ -25,15 +25,23 @@ LIMIT=${2:-20}
 
 echo "Fetching last $LIMIT submitted changes for $USER_NAME..."
 
-# Execute the pipeline
-# We use --preview-window=right:60% to give the description more room
-p4 changes -u "$USER_NAME" -s submitted -m "$LIMIT" | \
-fzf --header "Changelist Preview (User: $USER_NAME)" \
+
+SELECTED=$(p4 changes -u "$USER_NAME" -s submitted -m "$LIMIT" | \
+fzf --header "Submitted Changelists (User: $USER_NAME) | enter: select+dump" \
     --preview "p4 describe -s {2}" \
     --preview-window 'up,80%,border-left' \
     --bind "ctrl-down:change-preview-window(up,80%)" \
     --bind "ctrl-up:change-preview-window(down,80%)" \
     --bind "ctrl-right:change-preview-window(left,80%)" \
     --bind "ctrl-left:change-preview-window(right,80%)" \
-    --bind "enter:execute(p4 describe {2} | bat)" \
-    --info=inline
+    --info=inline)
+
+if [[ -n "$SELECTED" ]]; then
+    CL=$(echo "$SELECTED" | awk '{print $2}')
+    p4 describe -du "$CL" | delta
+    echo "\n=============================================="
+    echo -e "Select changelist: \033[31m$CL\033[0m"
+    echo -e "To view the diff of this changelist, run:"
+    echo -e "\033[32m\$ p4diff -c \033[31m$CL\033[0m"
+    echo "=============================================="
+fi
