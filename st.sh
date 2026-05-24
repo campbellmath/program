@@ -1,19 +1,20 @@
 #!/usr/bin/env sh
 
-INSTALL_PATH=$HOME/opt/program/st
-EXEC=$INSTALL_PATH/bin/st
-
 ###############################################################################
 # update git repositofy
 ###############################################################################
-git clone https://git.suckless.org/st
+git clone https://github.com/campbellmath/st
+cd st
+git switch my_own_settings
+
+echo
+echo "=============================================================="
+echo "Note that: Please check file st/config.mk for the install path"
+echo 'default:  PREFIX = ${HOME}/opt/program/st'
+echo "=============================================================="
+
 ###############################################################################
 # build
 ###############################################################################
-cd st
-rm -vfr config.mk config.def.h
-cp ../st-patch/config.mk ../st-patch/config.def.h .
-make -j install
-# echo "========================================================================"
-# $EXEC --version
-# echo "========================================================================"
+
+# make -j
